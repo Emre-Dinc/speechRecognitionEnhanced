@@ -5,6 +5,13 @@ from scipy.io.wavfile import write
 import numpy as np
 import scipy as sc
 from threading import Thread
+from pyAudioAnalysis import ShortTermFeatures as aF
+from pyAudioAnalysis import audioBasicIO as aIO
+import numpy as np
+import plotly.graph_objs as go
+import plotly
+import IPython
+import subprocess
 
 try:
     from queue import Queue  # Python 3 import
@@ -13,6 +20,7 @@ except ImportError:
 
 r = sr.Recognizer()
 audio_queue = Queue()
+sampleRate = 22500
 
 print("minimum enerji eşiği belirleniyor {}".format(r.energy_threshold))
 
@@ -45,15 +53,44 @@ with sr.Microphone() as source:
     try:
         while True:  # repeatedly listen for phrases and put the resulting audio on the audio processing job queue
             audio = r.listen(source, timeout=5, phrase_time_limit=5)  # It takes the microphones audio data
-            with open("output.flac", "wb") as f:
+            with open("outputexample.wav", "wb") as f:
                 f.write(audio.get_wav_data())
             sound = np.frombuffer(audio.frame_data, dtype=np.int16)
-            print(sound)
-            # this segment will be taking the audio data and proccess through diarization and noise reduction
+            # this segment will be taking the audio data and process through diarization and noise reduction
             # --------------------------------------------------------------------------------------
+            # read audio data from file
+            # (returns sampling freq and signal as a numpy array)
+            fs, s = aIO.read_audio_file("outputexample.wav")
+            print(s)
+            print(fs)
+            # play the initial and the generated files in notebook:
+            IPython.display.display(IPython.display.Audio("outputexample.wav"))
+
+            # print duration in seconds:
+            duration = len(s) / float(fs)
+            print(f'duration = {duration} seconds')
+
+            # extract short-term features using a 50msec non-overlapping windows
+            win, step = 0.050, 0.050
+            [f, fn] = aF.feature_extraction(s, fs, int(fs * win),
+                                            int(fs * step))
+            print(f'{f.shape[1]} frames, {f.shape[0]} short-term features')
+            print('Feature names:')
+            for i, nam in enumerate(fn):
+                print(f'{i}:{nam}')
+            # plot short-term energy
+            # create time axis in seconds
+            time = np.arange(0, duration - step, win)
+            # get the feature whose name is 'energy'
+            energy = f[fn.index('energy'), :]
+            mylayout = go.Layout(yaxis=dict(title="frame energy value"),
+                                 xaxis=dict(title="time (sec)"))
+            plotly.offline.iplot(go.Figure(data=[go.Scatter(x=time,
+                                                            y=energy)],
+                                           layout=mylayout))
 
             # --------------------------------------------------------------------------------------
-            audio.frame_rate, audio.sample_data = scipy.io.wavfile.read("output.flac")
+            audio.frame_rate, audio.sample_data = scipy.io.wavfile.read("outputexample.wav")
             audio_queue.put(r.listen(source, timeout=5, phrase_time_limit=5))
     except KeyboardInterrupt:  # allow Ctrl + C to shut down the program
         pass
