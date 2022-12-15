@@ -1,22 +1,34 @@
-import scipy.io.wavfile
-import soundfile
-import speech_recognition as sr
-from scipy.io.wavfile import write
-import numpy as np
-import scipy as sc
 from threading import Thread
-from pyAudioAnalysis import ShortTermFeatures as aF
-from pyAudioAnalysis import audioBasicIO as aIO
+
+import noisereduce as nr
+import soundfile as sf
+import speech_recognition as sr
+from pyannote.audio import Pipeline
+import numpy as np  # linear algebra
+import pandas as pd  # data processing, CSV file I/O (e.g. pd.read_csv)
+from pyannote.database import get_protocol, FileFinder
+from pyannote.audio.pipelines import VoiceActivityDetection
+import matplotlib.pyplot as plt
 import numpy as np
-import plotly.graph_objs as go
-import plotly
-import IPython
-import subprocess
+import csv
 
 try:
     from queue import Queue  # Python 3 import
 except ImportError:
     from Queue import Queue  # Python 2 import
+
+
+with open('SignList_ClassId_TR_EN.csv') as f:
+    turkish = [row[1] for row in csv.reader(f)]
+
+with open('SignList_ClassId_TR_EN.csv') as f:
+    english = [row[2] for row in csv.reader(f)]
+
+print(turkish)
+print(english)
+
+pipeline = Pipeline.from_pretrained("pyannote/speaker-segmentation",
+                                    use_auth_token="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")
 
 r = sr.Recognizer()
 audio_queue = Queue()
@@ -36,6 +48,8 @@ def recognize_worker():
             # for testing purposes, we're just using the default API key
             # to use another API key, use `r.recognize_google(audio, key="GOOGLE_SPEECH_RECOGNITION_API_KEY")`
             # instead of `r.recognize_google(audio)`
+            sentence = r.recognize_google(audio, language="tr-tr")
+
             print("Google Speech Recognition thinks you said " + r.recognize_google(audio, language="tr-tr"))
         except sr.UnknownValueError:
             print("Google Speech Recognition could not understand audio")
@@ -53,45 +67,37 @@ with sr.Microphone() as source:
     try:
         while True:  # repeatedly listen for phrases and put the resulting audio on the audio processing job queue
             audio = r.listen(source, timeout=5, phrase_time_limit=5)  # It takes the microphones audio data
-            with open("outputexample.wav", "wb") as f:
-                f.write(audio.get_wav_data())
-            sound = np.frombuffer(audio.frame_data, dtype=np.int16)
+            with open("output-example1.flac", "wb") as f:
+                f.write(audio.get_flac_data())
             # this segment will be taking the audio data and process through diarization and noise reduction
             # --------------------------------------------------------------------------------------
             # read audio data from file
-            # (returns sampling freq and signal as a numpy array)
-            fs, s = aIO.read_audio_file("outputexample.wav")
-            print(s)
-            print(fs)
-            # play the initial and the generated files in notebook:
-            IPython.display.display(IPython.display.Audio("outputexample.wav"))
-
-            # print duration in seconds:
-            duration = len(s) / float(fs)
-            print(f'duration = {duration} seconds')
-
-            # extract short-term features using a 50msec non-overlapping windows
-            win, step = 0.050, 0.050
-            [f, fn] = aF.feature_extraction(s, fs, int(fs * win),
-                                            int(fs * step))
-            print(f'{f.shape[1]} frames, {f.shape[0]} short-term features')
-            print('Feature names:')
-            for i, nam in enumerate(fn):
-                print(f'{i}:{nam}')
-            # plot short-term energy
-            # create time axis in seconds
-            time = np.arange(0, duration - step, win)
-            # get the feature whose name is 'energy'
-            energy = f[fn.index('energy'), :]
-            mylayout = go.Layout(yaxis=dict(title="frame energy value"),
-                                 xaxis=dict(title="time (sec)"))
-            plotly.offline.iplot(go.Figure(data=[go.Scatter(x=time,
-                                                            y=energy)],
-                                           layout=mylayout))
+            data, sample_rate = sf.read("output-example1.flac")
+            reduce_noise = nr.reduce_noise(y=data, sr=sample_rate)
 
             # --------------------------------------------------------------------------------------
-            audio.frame_rate, audio.sample_data = scipy.io.wavfile.read("outputexample.wav")
-            audio_queue.put(r.listen(source, timeout=5, phrase_time_limit=5))
+
+            sf.write("output-example4.wav", reduce_noise, samplerate=sample_rate)
+            sf.write("output-example1.flac", reduce_noise, samplerate=sample_rate)
+            #try:
+            #    diarization = pipeline("output-example4.wav")
+            #except ValueError:
+            #    pass
+
+            source.audio = audio
+            #for turn, _, speaker in diarization.itertracks(yield_label=True):
+            #    print(f"start={turn.start:.1f}s stop={turn.end:.1f}s speaker_{speaker}")
+            try:
+                output = pipeline("output-example4.wav")
+            except ValueError:
+                pass
+
+            for turn, _, speaker in output.itertracks(yield_label=True):
+                print(f"start={turn.start:.1f}s stop={turn.end:.1f}s speaker_{speaker}")
+
+            print(output.itertracks(yield_label=True))
+
+            audio_queue.put(audio)
     except KeyboardInterrupt:  # allow Ctrl + C to shut down the program
         pass
 
