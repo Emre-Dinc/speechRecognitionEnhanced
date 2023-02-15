@@ -1,4 +1,5 @@
 import csv
+import os
 import warnings
 import wave
 from threading import Thread
@@ -67,8 +68,7 @@ with sr.Microphone() as source:
             # --------------------------------------------------------------------------------------
             # read audio data from file
             data, sample_rate = sf.read("output-example1.flac")
-            reduce_noise = nr.reduce_noise(y=data, sr=sample_rate)  # apply the noise reduction
-            sf.write("output-example4.wav", reduce_noise, samplerate=sample_rate)
+            sf.write("output-example4.wav", data, samplerate=sample_rate)
             # sf.write("output-example1.flac", reduce_noise, samplerate=sample_rate)
 
             # --------------------------------------------------------------------------------------
@@ -108,19 +108,38 @@ with sr.Microphone() as source:
                     pass
                 try:
                     score, prediction = verification.verify_files("outputfile.wav", "Ege.wav")
+                    print(score)
+                    print(prediction)
                 except RuntimeError as k:
+                    print("Annen")
                     pass
-                if prediction is True:
+                if prediction:
                     the_result_audio_file = AudioSegment.from_wav("outputfile.wav")
+                    print(the_result_audio_file)
                     combine = combine + the_result_audio_file
                     combine.export("C:/Users/serha/PycharmProjects/pythonProject/combined.wav", format='wav')
                 else:
                     pass
 
                 print(f"start={turn.start:.1f}s stop={turn.end:.1f}s speaker_{speaker}")
-            with sr.AudioFile("output-example4.wav") as the_combined_data:
+            with sr.AudioFile("combined.wav") as the_combined_data:
                 audio = record.record(the_combined_data)
+            # Open the WAV file
+            with wave.open("combined.wav", "wb") as wav_file:
+                # Set the parameters of the empty WAV file
+                num_channels = 1  # mono
+                sample_width = 2  # 16-bit
+                frame_rate = sample_rate
+                num_frames = 0  # empty file
+
+                # Set the WAV file parameters
+                wav_file.setparams((num_channels, sample_width, frame_rate, num_frames, "NONE", "not compressed"))
+
+                # Write the empty frames to the file
+                wav_file.writeframes(b"\x00" * num_frames * num_channels * sample_width)
             audio_queue.put(audio)
+
+
     except KeyboardInterrupt:  # allow Ctrl + C to shut down the program
         pass
 
