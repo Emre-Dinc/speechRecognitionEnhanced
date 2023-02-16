@@ -43,13 +43,13 @@ def recognize_worker():
             sentence = record.recognize_google(audiosentence, language="tr-tr")
 
             result = analyzer.analyze(sentence)
-            """for word_result in result:
-                for parse in word_result:"""
+
+            for word_result in result:
+                for parse in word_result:
+                    print(parse.formatted)
 
 
-            x=json.dumps(result)
-            print(x[:5])
-            print(x)
+
 
 
             print("Google Speech Recognition şunu söylediğini düşünüyor: " + sentence)
@@ -183,7 +183,7 @@ with sr.Microphone() as source:
                 # Open the WAV file
             with wave.open("combined.wav", "wb") as wav_file:
                 # Set the parameters of the empty WAV file
-                num_channels = 2  # mono
+                num_channels = 2  # double
                 sample_width = 2  # 16-bit
                 frame_rate = sampleRate
                 num_frames = 0  # empty file

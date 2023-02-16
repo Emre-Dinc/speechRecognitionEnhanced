@@ -3,5 +3,6 @@
   <component name="VcsDirectoryMappings">
     <mapping directory="" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/pyannote-audio" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/zemberek-nlp" vcs="Git" />
   </component>
 </project>
