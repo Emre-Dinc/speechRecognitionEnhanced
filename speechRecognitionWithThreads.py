@@ -36,6 +36,7 @@ print(english)
 
 record = sr.Recognizer()
 record_for_another_recognizer = sr.Recognizer()
+
 audio_queue = Queue()
 sampleRate = 32000
 

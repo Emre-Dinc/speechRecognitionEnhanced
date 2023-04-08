@@ -1,11 +1,9 @@
-import json
 import wave
 from queue import Queue  # Python 3 import
 from threading import Thread
-
+import os
 import nltk
-import noisereduce as nr
-import soundfile as sf
+import requests
 import speech_recognition as sr
 from pyannote.audio import Pipeline
 from pydub import AudioSegment
@@ -19,13 +17,15 @@ verification = SpeakerRecognition.from_hparams(source="speechbrain/spkrec-ecapa-
                                                savedir="pretrained_models/spkrec-ecapa-voxceleb")
 
 nltk.download('punkt')
+url = 'http://127.0.0.1:5000/mp4-names'
 analyzer = MorphAnalyzer()
 record = sr.Recognizer()
 record_for_another_recognizer = sr.Recognizer()
 audio_queue = Queue()
 sampleRate = 16000
-accountSpeakerFile ="C:/Users/serha/PycharmProjects/pythonProject/Ege.wav"
+accountSpeakerFile = "C:/Users/serha/PycharmProjects/pythonProject/Ege.wav"
 
+nlpArray = []
 print("minimum enerji eşiği belirleniyor {}".format(record.energy_threshold))
 
 
@@ -43,14 +43,20 @@ def recognize_worker():
             sentence = record.recognize_google(audiosentence, language="tr-tr")
 
             result = analyzer.analyze(sentence)
-
+            sentences = []
             for word_result in result:
                 for parse in word_result:
-                    print(parse.formatted)
-
-
-
-
+                    word = "".join(parse.formatted)
+                    word = word.split(" ")
+                    word = word[0]
+                    word = word.split(':')
+                    word = "".join(word[0])
+                    word = word[1:]
+                    print(word)
+                    sentences.append(word)
+            sentence_string = ' '.join(sentences)
+            os.environ['SPOKEN_WORDS'] = sentence_string
+            payload = {'sentences': sentences}
 
             print("Google Speech Recognition şunu söylediğini düşünüyor: " + sentence)
         except sr.UnknownValueError:
@@ -74,12 +80,13 @@ recognize_thread.start()
 with sr.Microphone() as source:
     try:
         while True:  # repeatedly listen for phrases and put the resulting audio on the audio processing job queue
-            audio = record.listen(source,phrase_time_limit= 20)  # It takes the microphones audio data
+            audio = record.listen(source, phrase_time_limit=15)  # It takes the microphones audio data
+
             with open("output-example4.wav", "wb") as f:
                 f.write(audio.get_wav_data())
 
             try:
-                output = pipeline("output-example4.wav", min_speakers=1, max_speakers=3)
+                output = pipeline("output-example4.wav", min_speakers=2)
             except ValueError as a:
                 print("Value Error outputun altında")
                 print(format(a))
@@ -94,64 +101,25 @@ with sr.Microphone() as source:
                 print(format(e))
                 continue
 
-
             combine = 0
             try:
-                for turn, _, speaker in output.itertracks(yield_label=True):
+                with wave.open('output-example4.wav', "rb") as infile:
+                    # get file data
+                    nchannels = infile.getnchannels()
+                    sampwidth = infile.getsampwidth()
+                    framerate = infile.getframerate()
 
-                    # times between which to extract the wave from
-                    start = turn.start  # seconds
-                    end = turn.end  # seconds
-                    # file to extract the snippet from
-                    if accountSpeakerFile is None:
-                        if speaker[9] == "0":
-                            # file to extract the snippet from
-                            try:
-                                with wave.open('output-example4.wav', "rb") as infile:
-                                    # get file data
-                                    nchannels = infile.getnchannels()
-                                    sampwidth = infile.getsampwidth()
-                                    framerate = infile.getframerate()
-                                    # set position in wave to start of segment
-                                    infile.setpos(int(start * framerate))
-                                    # extract data
-                                    data = infile.readframes(int((end - start) * framerate))
-                            except wave.Error as a:
-                                print("Wave Error wave.openın altında")
-                                print(format(a))
+                    for turn, _, speaker in output.itertracks(yield_label=True):
+                        print(f"start={turn.start:.1f}s stop={turn.end:.1f}s speaker_{speaker}")
+                        # times between which to extract the wave from
+                        start = turn.start  # seconds
+                        end = turn.end  # seconds
 
-                            try:
-                                # write the extracted data to a new file
-                                with wave.open('outputfile.wav', 'wb') as outfile:
-                                    outfile.setnchannels(nchannels)
-                                    outfile.setsampwidth(sampwidth)
-                                    outfile.setframerate(framerate)
-                                    outfile.setnframes(int(len(data) / sampwidth))
-                                    outfile.writeframes(data)
-                            except wave.Error as a:
-                                print("Wave Error outputun altında")
-                                print(format(a))
-                            infile.close()
-                            outfile.close()
+                        if accountSpeakerFile is None and speaker[9] == "0":
+                            # extract data
+                            infile.setpos(int(start * framerate))
+                            data = infile.readframes(int((end - start) * framerate))
 
-                            the_result_audio_file = AudioSegment.from_wav("outputfile.wav")
-
-                            combine = combine + the_result_audio_file
-                            combine.export("C:/Users/serha/PycharmProjects/pythonProject/combined.wav", format='wav')
-                    else:
-                        try:
-                            with wave.open('output-example4.wav', "rb") as infile:
-                                # get file data
-                                nchannels = infile.getnchannels()
-                                sampwidth = infile.getsampwidth()
-                                framerate = infile.getframerate()
-                                # set position in wave to start of segment
-                                infile.setpos(int(start * framerate))
-                                # extract data
-                                data = infile.readframes(int((end - start) * framerate))
-                        except wave.Error as a:
-                            print(format(a))
-                        try:
                             # write the extracted data to a new file
                             with wave.open('outputfile.wav', 'wb') as outfile:
                                 outfile.setnchannels(nchannels)
@@ -159,21 +127,38 @@ with sr.Microphone() as source:
                                 outfile.setframerate(framerate)
                                 outfile.setnframes(int(len(data) / sampwidth))
                                 outfile.writeframes(data)
-                        except wave.Error as a:
-                            print(format(a))
-                        try:
-                            score, prediction = verification.verify_files("outputfile.wav", accountSpeakerFile)
-                            print(prediction)
-                        except RuntimeError as k:
-                            print("Runtime Error verificationın altında")
-                            print(format(k))
-                        if prediction:
+
                             the_result_audio_file = AudioSegment.from_wav("outputfile.wav")
                             combine = combine + the_result_audio_file
                             combine.export("C:/Users/serha/PycharmProjects/pythonProject/combined.wav", format='wav')
-                        else:
-                            pass
-                    print(f"start={turn.start:.1f}s stop={turn.end:.1f}s speaker_{speaker}")
+                        elif accountSpeakerFile is not None:
+                            # extract data
+                            infile.setpos(int(start * framerate))
+                            data = infile.readframes(int((end - start) * framerate))
+
+                            # write the extracted data to a new file
+                            with wave.open('outputfile.wav', 'wb') as outfile:
+                                outfile.setnchannels(nchannels)
+                                outfile.setsampwidth(sampwidth)
+                                outfile.setframerate(framerate)
+                                outfile.setnframes(int(len(data) / sampwidth))
+                                outfile.writeframes(data)
+
+
+                try:
+                    score, prediction = verification.verify_files("outputfile.wav", accountSpeakerFile)
+                    print(prediction)
+                except RuntimeError as k:
+                    print("Runtime Error verificationın altında")
+                    print(format(k))
+                if prediction:
+                    the_result_audio_file = AudioSegment.from_wav("outputfile.wav")
+                    combine = combine + the_result_audio_file
+                    combine.export("C:/Users/serha/PycharmProjects/pythonProject/combined.wav", format='wav')
+                else:
+                    pass
+
+
             except NameError as k:
                 print("Name Error forun altında")
                 print(format(k))
